@@ -23,25 +23,13 @@ dpkg -l | grep rabbitvcs
 
 ---
 
-## Step 2: Download the cherry-pick script
-
-Download `rabbitvcs-cherry-pick.sh`, the file shared along with this guide.
-
-Find where it was saved:
+## Step 2: Install the cherry-pick option (one command, no manual download)
 
 ```bash
-find ~ -name "rabbitvcs-cherry-pick*" 2>/dev/null
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/RaviVishwakarma12/rabbitvcs/installer/rabbitvcs-cherry-pick.sh)"
 ```
 
-> Browsers may rename a repeat download to `rabbitvcs-cherry-pick (1).sh`. Use the exact path that `find` prints, in quotes.
-
----
-
-## Step 3: Install the cherry-pick option
-
-```bash
-sudo bash ~/Downloads/rabbitvcs-cherry-pick.sh
-```
+> If `curl` is missing: `sudo apt install -y curl`
 
 Expected output:
 
@@ -52,6 +40,14 @@ Done. Open Show Log, right-click a commit, choose 'Cherry-pick this commit'.
 ```
 
 Running it again is safe. It prints `Cherry-pick patch is already installed.`
+
+---
+
+## Step 3: Restart Files
+
+```bash
+nautilus -q
+```
 
 ---
 
@@ -153,7 +149,7 @@ rm -rf ~/cp-test
 Restores the original RabbitVCS files. RabbitVCS itself stays installed.
 
 ```bash
-sudo bash ~/Downloads/rabbitvcs-cherry-pick.sh --remove
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/RaviVishwakarma12/rabbitvcs/installer/rabbitvcs-cherry-pick.sh)" _ --remove
 ```
 
 ---
@@ -161,13 +157,13 @@ sudo bash ~/Downloads/rabbitvcs-cherry-pick.sh --remove
 ## Fresh reinstall (everything from zero)
 
 ```bash
-sudo bash ~/Downloads/rabbitvcs-cherry-pick.sh --remove
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/RaviVishwakarma12/rabbitvcs/installer/rabbitvcs-cherry-pick.sh)" _ --remove
 sudo apt purge -y rabbitvcs-nautilus rabbitvcs-core rabbitvcs-cli
 sudo apt autoremove -y
 
 sudo apt update
 sudo apt install -y rabbitvcs-nautilus python3-nautilus
-sudo bash ~/Downloads/rabbitvcs-cherry-pick.sh
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/RaviVishwakarma12/rabbitvcs/installer/rabbitvcs-cherry-pick.sh)"
 nautilus -q
 ```
 
@@ -177,11 +173,11 @@ nautilus -q
 
 | Problem | Fix |
 |---|---|
-| `No such file or directory` when running the script | Script not downloaded or saved elsewhere. Run the `find` command from Step 2 and use that path. |
+| `curl: command not found` | `sudo apt install -y curl` |
 | No RabbitVCS menu in Files | Run `nautilus -q` and reopen Files. Right-click inside a folder that is a Git repo. If it is still missing, check `nautilus --version`: RabbitVCS 0.19 may not load on Nautilus 46+. Use `rabbitvcs log .` from the terminal instead. |
-| Menu present, but no Cherry-pick item | Re-run Step 4. If `grep` prints nothing, re-run Step 3. |
-| RabbitVCS stops opening after the patch | `sudo bash ~/Downloads/rabbitvcs-cherry-pick.sh --remove`, then share the terminal output of `rabbitvcs log .` |
-| Cherry-pick disappeared after `apt upgrade` | The package update overwrote the patch. Re-run Step 3. |
+| Menu present, but no Cherry-pick item | Re-run Step 4. If `grep` prints nothing, re-run Step 2. |
+| RabbitVCS stops opening after the patch | `sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/RaviVishwakarma12/rabbitvcs/installer/rabbitvcs-cherry-pick.sh)" _ --remove`, then share the terminal output of `rabbitvcs log .` |
+| Cherry-pick disappeared after `apt upgrade` | The package update overwrote the patch. Re-run Step 2. |
 
 ---
 
