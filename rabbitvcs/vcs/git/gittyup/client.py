@@ -2075,6 +2075,9 @@ class GittyupClient:
             cmd.append(f"--skip={skip}")
         if os.environ.get('RABBITVCS_REVISION_RANGE') is not None:
             cmd.append(os.environ.get('RABBITVCS_REVISION_RANGE'))
+        elif showtype == "cherry":
+            # Commits in <revision> not yet in HEAD, hiding already-picked ones
+            cmd += ["--cherry-pick", "--right-only", f"HEAD...{revision}"]
         elif revision:
             if showtype == "push":
                 cmd.append(f"{revision}..")

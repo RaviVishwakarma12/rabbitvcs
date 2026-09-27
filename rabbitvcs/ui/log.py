@@ -737,8 +737,49 @@ class GitLog(Log):
             flags={"sortable": False},
         )
         self.start_point = 0
+        self.branch_filter = None
+        self.initialize_branch_filter()
         self.initialize_root_url()
         self.load_or_refresh()
+
+    def initialize_branch_filter(self):
+        """
+        Adds a "Branch" dropdown next to the search box. Choosing a branch
+        lists only its commits that are not in the current branch
+        (cherry-pick candidates), like TortoiseGit's log branch selector.
+
+        """
+        self.branch_filter_refs = [None]
+        combo = Gtk.ComboBoxText()
+        combo.append_text(_("All branches"))
+
+        current = ""
+        for branch in self.git.branch_list():
+            name = S(branch.name)
+            if branch.tracking:
+                current = name
+                continue
+            if name.endswith("/HEAD") or " -> " in name:
+                continue
+            self.branch_filter_refs.append(name)
+            label = name[len("remotes/") :] if name.startswith("remotes/") else name
+            combo.append_text(label)
+
+        combo.set_active(0)
+        combo.set_tooltip_text(
+            _("Show commits from this branch that are not in '%s'") % current
+        )
+        combo.connect("changed", self.on_branch_filter_changed)
+
+        grid = self.get_widget("hbox-search")
+        grid.attach(Gtk.Label(label=_("Branch:")), 1, 0, 1, 1)
+        grid.attach(combo, 2, 0, 1, 1)
+        grid.show_all()
+
+    def on_branch_filter_changed(self, combo):
+        self.branch_filter = self.branch_filter_refs[combo.get_active()]
+        self.start_point = 0
+        self.load()
 
     #
     # Log-loading callback methods
@@ -875,8 +916,19 @@ class GitLog(Log):
         # Load log.
         self.action = GitAction(self.git, notification=False, run_in_thread=True)
 
+        log_args = {}
+        if self.branch_filter:
+            log_args = {
+                "revision": self.git.revision(self.branch_filter),
+                "showtype": "cherry",
+            }
+
         self.action.append(
-            self.git.log, path=self.path, skip=self.start_point, limit=self.limit + 1
+            self.git.log,
+            path=self.path,
+            skip=self.start_point,
+            limit=self.limit + 1,
+            **log_args
         )
         self.action.append(self.refresh)
         self.action.schedule()
