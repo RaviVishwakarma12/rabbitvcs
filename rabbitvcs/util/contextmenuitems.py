@@ -785,7 +785,13 @@ class MenuReset(MenuItem):
 
 class MenuCherryPick(MenuItem):
     identifier = "RabbitVCS::Cherry_Pick"
-    label = _("Cherry-pick this commit")
+    label = _("Cherry Pick this commit...")
+    icon = "rabbitvcs-merge"
+
+
+class MenuCherryPickSelected(MenuItem):
+    identifier = "RabbitVCS::Cherry_Pick_Selected"
+    label = _("Cherry Pick selected commits...")
     icon = "rabbitvcs-merge"
 
 

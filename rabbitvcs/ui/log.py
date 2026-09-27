@@ -36,6 +36,7 @@ from rabbitvcs.util.contextmenuitems import (
     MenuMerge,
     MenuReset,
     MenuCherryPick,
+    MenuCherryPickSelected,
     MenuOpen,
     MenuAnnotate,
 )
@@ -44,7 +45,6 @@ import rabbitvcs.ui.widget
 from rabbitvcs.ui.action import SVNAction, GitAction
 from rabbitvcs.ui import InterfaceView
 from gi.repository import Gtk, GObject, Gdk
-import subprocess
 from locale import strxfrm
 
 import os
@@ -1243,7 +1243,10 @@ class LogTopContextMenuConditions:
         return self.vcs_name == rabbitvcs.vcs.VCS_GIT
 
     def cherry_pick(self, data=None):
-        return self.vcs_name == rabbitvcs.vcs.VCS_GIT
+        return self.vcs_name == rabbitvcs.vcs.VCS_GIT and len(self.revisions) == 1
+
+    def cherry_pick_selected(self, data=None):
+        return self.vcs_name == rabbitvcs.vcs.VCS_GIT and len(self.revisions) > 1
 
 
 class LogTopContextMenuCallbacks:
@@ -1489,47 +1492,22 @@ class LogTopContextMenuCallbacks:
         )
 
     def cherry_pick(self, widget, data=None):
-        from rabbitvcs.ui.dialog import Confirmation, MessageBox
+        from rabbitvcs.ui.cherrypick import cherry_pick
 
-        cwd = self.path if os.path.isdir(self.path) else os.path.dirname(self.path)
-
-        def git(*args):
-            proc = subprocess.run(
-                ["git"] + list(args), cwd=cwd, capture_output=True, text=True, check=False
+        # The log lists newest first; TortoiseGit picks oldest first.
+        commits = [
+            (
+                S(r["revision"]),
+                S(r["message"]).strip().split("\n")[0],
+                S(r["author"]),
             )
-            return proc.returncode, (proc.stdout + proc.stderr).strip()
-
-        # Log lists newest first; cherry-pick oldest first to keep order.
-        commits = [S(r["revision"]) for r in reversed(self.revisions)]
-        _code, branch = git("rev-parse", "--abbrev-ref", "HEAD")
-        summary = "\n".join(
-            "%s  %s" % (c[:8], S(r["message"]).split("\n")[0][:60])
-            for c, r in zip(commits, reversed(self.revisions))
-        )
-
-        prompt = _("Cherry-pick %d commit(s) onto '%s'?\n\n%s") % (
-            len(commits),
-            branch,
-            summary,
-        )
-        if Confirmation(prompt).run() != Gtk.ResponseType.OK:
-            return
-
-        code, output = git("cherry-pick", *commits)
-        if code == 0:
-            MessageBox(_("Cherry-pick completed.\n\n%s") % output)
+            for r in reversed(self.revisions)
+        ]
+        if cherry_pick(self.path, commits, self.caller.get_widget("Log")):
             self.caller.load()
-            return
 
-        abort_prompt = _(
-            "Cherry-pick stopped (conflict or error):\n\n%s\n\n"
-            "Click OK to abort and restore the branch, or Cancel to keep the "
-            "conflict and resolve it yourself (then commit, or run "
-            "'git cherry-pick --continue')."
-        ) % output
-        if Confirmation(abort_prompt).run() == Gtk.ResponseType.OK:
-            git("cherry-pick", "--abort")
-        self.caller.load()
+    def cherry_pick_selected(self, widget, data=None):
+        self.cherry_pick(widget, data)
 
     def edit_author(self, widget, data=None):
         author = ""
@@ -1635,6 +1613,7 @@ class LogTopContextMenu:
             (MenuMerge, None),
             (MenuReset, None),
             (MenuCherryPick, None),
+            (MenuCherryPickSelected, None),
             (MenuSeparatorLast, None),
             (MenuEditAuthor, None),
             (MenuEditLogMessage, None),
