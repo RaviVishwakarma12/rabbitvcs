@@ -34,6 +34,7 @@ Git cherry-pick, modelled on TortoiseGit's Cherry Pick dialog:
 
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 
@@ -115,6 +116,25 @@ class CherryPicker:
         out = self.output("diff", "--name-only", "--diff-filter=U")
         return [line for line in out.splitlines() if line]
 
+    def stages(self, name):
+        out = self.output("ls-files", "-u", "--", os.path.join(self.root, name))
+        return {int(line.split()[2]) for line in out.splitlines() if line}
+
+    def deleted_on_one_side(self, files):
+        return [name for name in files if not {2, 3} <= self.stages(name)]
+
+    def resolve_using(self, name, theirs):
+        """Take one side of a conflict, including when that side deleted it."""
+        stage = 3 if theirs else 2
+        path = os.path.join(self.root, name)
+        if stage in self.stages(name):
+            code, out = self.git("checkout", "--theirs" if theirs else "--ours", "--", path)
+            if code == 0:
+                code, out = self.git("add", "--", path)
+        else:
+            code, out = self.git("rm", "-q", "--", path)
+        return code, out
+
     def files_with_markers(self, files):
         found = []
         for name in files:
@@ -125,6 +145,34 @@ class CherryPicker:
                 if any(line.startswith(CONFLICT_MARKERS) for line in handle):
                     found.append(name)
         return found
+
+    def conflict_versions(self, name):
+        """
+        Writes the base, mine and theirs versions of a conflicted file to a
+        temporary folder, like TortoiseGit does before opening its merge tool.
+
+        @return: dict with "base", "mine", "theirs" (None when that side
+                 deleted the file) and "merged" (the working tree file)
+
+        """
+        folder = tempfile.mkdtemp(prefix="rabbitvcs-cherry-pick-")
+        stem, ext = os.path.splitext(os.path.basename(name))
+        versions = {"merged": os.path.join(self.root, name)}
+        for stage, side in ((1, "base"), (2, "mine"), (3, "theirs")):
+            proc = subprocess.run(
+                ["git", "show", f":{stage}:{name}"],
+                cwd=self.root,
+                capture_output=True,
+                check=False,
+            )
+            if proc.returncode:
+                versions[side] = None
+                continue
+            path = os.path.join(folder, f"{stem}.{side.upper()}{ext}")
+            with open(path, "wb") as handle:
+                handle.write(proc.stdout)
+            versions[side] = path
+        return versions
 
     def merge_message(self):
         path = self.output("rev-parse", "--git-path", "MERGE_MSG")
@@ -251,6 +299,17 @@ class CherryPicker:
             if choice == SKIP:
                 self.git("reset", "--hard")
                 return SKIPPED
+
+            deleted = self.deleted_on_one_side(self.conflicted_files())
+            if deleted:
+                self.ui.error(
+                    _(
+                        "These files were deleted on one side. Choose Resolve "
+                        "using Theirs or Resolve using Mine for them:\n\n%s"
+                    )
+                    % "\n".join(deleted)
+                )
+                continue
 
             unresolved = self.files_with_markers(self.conflicted_files())
             if unresolved:
@@ -493,16 +552,9 @@ class GtkCherryPickUI:
             response = dialog.run()
             name = selected()
             if response == self.EDIT and name:
-                from rabbitvcs.util import helper
-
-                helper.launch_ui_window(
-                    "editconflicts", [os.path.join(picker.root, name)]
-                )
+                self.edit_conflicts(picker, name)
             elif response in (self.THEIRS, self.MINE) and name:
-                side = "--theirs" if response == self.THEIRS else "--ours"
-                code, out = picker.git("checkout", side, "--", name)
-                if code == 0:
-                    code, out = picker.git("add", "--", name)
+                code, out = picker.resolve_using(name, response == self.THEIRS)
                 if code:
                     self.error(out)
                 refresh()
@@ -524,6 +576,51 @@ class GtkCherryPickUI:
                 ) == 1:
                     dialog.destroy()
                     return ABORT, ""
+
+    def edit_conflicts(self, picker, name):
+        """
+        Opens a 3-way merge: the merge tool set in RabbitVCS settings, else
+        Meld, else the default editor on the file with conflict markers.
+
+        """
+        versions = picker.conflict_versions(name)
+        if not versions["mine"] or not versions["theirs"]:
+            self.error(
+                _(
+                    "'%s' was deleted on one side. Use Resolve using Theirs "
+                    "or Resolve using Mine."
+                )
+                % name
+            )
+            return
+
+        from rabbitvcs.util import helper
+
+        if helper.get_merge_tool():
+            helper.launch_merge_tool(
+                versions["base"] or "",
+                versions["mine"],
+                versions["theirs"],
+                versions["merged"],
+            )
+        elif shutil.which("meld"):
+            subprocess.Popen(  # pylint: disable=consider-using-with
+                ["meld", versions["mine"], versions["merged"], versions["theirs"]]
+            )
+        else:
+            subprocess.Popen(  # pylint: disable=consider-using-with
+                ["xdg-open", versions["merged"]]
+            )
+            self.message(
+                _("No merge tool found"),
+                _(
+                    "The file was opened in your default editor. Fix the "
+                    "conflict markers, save, then click Continue.\n\n"
+                    "For a 3-way merge view: sudo apt install meld"
+                ),
+                [(_("_OK"), 0)],
+                self.Gtk.MessageType.INFO,
+            )
 
     def select_commits(self, commits, branch, add_cherry_picked_from):
         """
