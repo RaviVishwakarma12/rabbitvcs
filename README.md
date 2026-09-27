@@ -1,7 +1,10 @@
 # RabbitVCS with Cherry-pick on Ubuntu
 
 RabbitVCS is the Linux version of TortoiseGit: it adds Git options to the right-click menu in the Files app.
-Ubuntu's RabbitVCS has no cherry-pick option. The `rabbitvcs-cherry-pick.sh` script adds one, with abort on conflict.
+Ubuntu's RabbitVCS has no cherry-pick option. The `rabbitvcs-cherry-pick.sh` script adds, in the Show Log window:
+
+- A **Branch** dropdown: lists commits from the chosen branch that are not yet in your current branch (already-picked commits are hidden)
+- **Cherry-pick this commit** in the right-click menu, with abort on conflict
 
 ---
 
@@ -36,10 +39,10 @@ Expected output:
 ```
 patching file rabbitvcs/ui/log.py
 patching file rabbitvcs/util/contextmenuitems.py
-Done. Open Show Log, right-click a commit, choose 'Cherry-pick this commit'.
+Done. Open Show Log, choose a branch in the 'Branch' dropdown, right-click a commit, choose 'Cherry-pick this commit'.
 ```
 
-Running it again is safe. It prints `Cherry-pick patch is already installed.`
+Running it again is safe. It prints `Cherry-pick patch is already installed and up to date.` If you installed an older version, the same command upgrades it.
 
 ---
 
@@ -53,11 +56,14 @@ nautilus -q
 
 ## Step 4: Verify
 
-Both commands should print a line:
+All three commands should print a line:
 
 ```bash
 # Menu item added
 grep -n "MenuCherryPick" /usr/lib/python3/dist-packages/rabbitvcs/util/contextmenuitems.py
+
+# Branch dropdown added
+grep -n "initialize_branch_filter" /usr/lib/python3/dist-packages/rabbitvcs/ui/log.py
 
 # Abort-on-conflict added
 grep -n 'cherry-pick", "--abort"' /usr/lib/python3/dist-packages/rabbitvcs/ui/log.py
@@ -98,7 +104,8 @@ Or: open `~/cp-test` in Files → right-click → **RabbitVCS Git → Show Log**
 
 | # | Action | Expected |
 |---|---|---|
-| 1 | Right-click **add extra.txt** → **Cherry-pick this commit** → OK | "Cherry-pick completed", `extra.txt` appears |
+| 0 | In the **Branch** dropdown, choose **feature** | Only the 3 feature commits are listed |
+| 1 | Right-click **add extra.txt** → **Cherry-pick this commit** → OK | "Cherry-pick completed", `extra.txt` appears, and the commit disappears from the list |
 | 2 | Right-click **add more.txt** → Cherry-pick → OK | Completes, `more.txt` appears |
 | 3 | Right-click **change app.txt (feature)** → Cherry-pick → OK → conflict dialog → **OK** | Aborted, branch restored |
 | 4 | Repeat 3, but click **Cancel** in the conflict dialog | Conflict kept for manual resolution |
@@ -137,10 +144,16 @@ rm -rf ~/cp-test
 
 ## Daily use
 
-1. In Files, open your repo folder and right-click → **RabbitVCS Git → Show Log**.
-2. The log shows commits from all branches. Select the commit(s) you want.
-3. Right-click → **Cherry-pick this commit** → confirm the target branch → OK.
-4. Push as usual.
+Example: you are on `ravi/task/new-update` and need a fix from `volza-bugfix-ejs-node`.
+
+1. Switch to your branch and fetch: `git checkout ravi/task/new-update && git fetch origin`
+2. In Files, right-click in the repo folder → **RabbitVCS Git → Show Log**.
+3. In the **Branch** dropdown (top, next to search), choose **origin/volza-bugfix-ejs-node**.
+   Only commits that branch has and yours doesn't are listed.
+4. Right-click the commit(s) → **Cherry-pick this commit** → check it says `onto 'ravi/task/new-update'` → OK.
+5. Push: `git push origin ravi/task/new-update`
+
+Choose **All branches** in the dropdown to go back to the full log.
 
 ---
 
@@ -175,9 +188,9 @@ nautilus -q
 |---|---|
 | `curl: command not found` | `sudo apt install -y curl` |
 | No RabbitVCS menu in Files | Run `nautilus -q` and reopen Files. Right-click inside a folder that is a Git repo. If it is still missing, check `nautilus --version`: RabbitVCS 0.19 may not load on Nautilus 46+. Use `rabbitvcs log .` from the terminal instead. |
-| Menu present, but no Cherry-pick item | Re-run Step 4. If `grep` prints nothing, re-run Step 2. |
+| No Branch dropdown, or no Cherry-pick item | Re-run Step 4. If any `grep` prints nothing, re-run Step 2. |
 | RabbitVCS stops opening after the patch | `sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/RaviVishwakarma12/rabbitvcs/installer/rabbitvcs-cherry-pick.sh)" _ --remove`, then share the terminal output of `rabbitvcs log .` |
-| Cherry-pick disappeared after `apt upgrade` | The package update overwrote the patch. Re-run Step 2. |
+| Branch dropdown or cherry-pick missing after `apt upgrade` | The package update overwrote the patch. Re-run Step 2. |
 
 ---
 
