@@ -1,38 +1,56 @@
 # RabbitVCS with TortoiseGit-style Cherry Pick on Ubuntu
 
 RabbitVCS is the Linux version of TortoiseGit: it adds Git options to the right-click menu in the Files app.
-Ubuntu's RabbitVCS has no cherry-pick. The `rabbitvcs-cherry-pick.sh` script adds TortoiseGit's cherry-pick flow to the **Show Log** window:
+Ubuntu's RabbitVCS has no cherry-pick. The `rabbitvcs-cherry-pick.sh` script adds TortoiseGit's cherry-pick, ported from TortoiseGit's own source code (its log dialog and its Rebase/Cherry Pick dialog).
+
+## What you get
+
+**Show Log window**
 
 | Feature | Same as TortoiseGit |
 |---|---|
-| **Branch** dropdown: shows commits from a chosen branch that are not yet in your current branch | Log branch/ref filter |
-| **Cherry Pick this commit...** / **Cherry Pick selected commits...** in the right-click menu | Same menu labels |
-| **Cherry Pick dialog**: tick or untick each commit, **Move Up/Down** to reorder | Pick / Skip and reordering |
-| **Add "cherry picked from"** option (`-x`), remembered for next time | Same option |
-| Uncommitted changes: *"The current working tree is not clean. Do you want to stash the changes?"* and at the end *"Do you want to stash pop now?"* | Same prompts |
-| Merge commits (for example "Merge pull request #..."): choose **Parent 1** or **Parent 2** | Same choice |
-| Commit becomes empty (already in your branch): **Commit** / **Skip** / **Cancel** | Same choice |
-| Conflicts: **Edit Conflicts** (3-way merge: Mine / file / Theirs), **Resolve using Theirs / Mine**, editable commit message, then **Continue**, **Skip this commit** or **Abort** | Same flow |
-| **Abort** puts your branch back exactly as it was before the run | Same |
+| The log opens on your **current branch** | Yes |
+| **Branch name at the top left**: click it to open **Browse References** (local branches, remote branches, tags, with a filter) | Yes |
+| Right-click the branch name: **Browse references**, **HEAD -> "branch"**, **FETCH_HEAD**, **All**, **All basic refs**, **All local branches**, and recently chosen branches | Yes |
+| **All Branches** check box at the bottom left | Yes |
+| Right-click commits: **Cherry Pick this commit...** / **Cherry Pick selected commits...** (hidden on the HEAD commit and while a merge or cherry-pick is in progress) | Yes |
 
-Not included: TortoiseGit's **Squash** and **Edit** per-commit actions.
+**Cherry Pick window**
+
+| Feature | Same as TortoiseGit |
+|---|---|
+| Commit list with **REBASE / ID / SHA-1 / Message / Author / Date**, applied from the bottom up | Yes |
+| Per commit: **Pick**, **Squash (with commit below)**, **Edit**, **Skip** (right-click, or keys `P`, `Q`, `E`, `S`, `Space` to cycle) | Yes |
+| **Pick ALL** button with **Squash ALL**, **Edit ALL**, **Skip unselected**, **Squash unselected**, **Edit unselected** | Yes |
+| **Up** / **Down** (Shift: to the top / bottom), **Add** more commits | Yes |
+| **add "cherry picked from"** (remembered) | Yes |
+| Tabs: **Revision Files**, **Commit Message**, **Log**; progress bar with **Rebasing... (n/m)** | Yes |
+| One main button: **Continue** → **Commit** (after a conflict) / **Amend** (Edit) / **Commit** (Squash) → **Done** | Yes |
+| Uncommitted changes: *"The current working tree is not clean. Do you want to stash the changes?"*, and at the end *"Do you want to stash pop now?"* | Yes |
+| Merge commits: choose **Parent 1** or **Parent 2** | Yes |
+| Commit becomes empty: **Commit** / **Skip** / **Cancel** | Yes |
+| Pick fails without a conflict: **Skip** / **Retry** / **Cancel**, plus **Do the same for the rest** | Yes |
+| **Conflict Files** tab with check boxes; right-click: **Edit conflicts** (3-way merge in Meld), **Resolved**, **Resolve conflict using "CHERRY_PICK_HEAD (…)"**, **Resolve conflict using "HEAD"** | Yes |
+| **Delete/modify merge conflict** dialog: **Modified** / **Delete** / **Abort** | Yes |
+| Warning if the message still contains `# Conflicts:` lines: **Ignore** / **Abort** | Yes |
+| **Abort**: *"Are you sure you want to abort the rebase process?"* → branch goes back to where it was (also after Done) | Yes |
 
 ---
 
-## Step 1: Install RabbitVCS
+## Step 1: Install RabbitVCS and Meld
 
 ```bash
 sudo apt update
-sudo apt install -y rabbitvcs-nautilus python3-nautilus curl meld
+sudo apt install -y rabbitvcs-nautilus python3-nautilus meld curl
 ```
 
-`meld` is the 3-way merge tool that **Edit Conflicts** opens.
+`meld` is the 3-way merge tool that **Edit conflicts** opens.
 
-> `SyntaxWarning` lines during the install are harmless. The install succeeded if you see `Setting up rabbitvcs-nautilus ...`.
+> `SyntaxWarning` lines during the install are harmless.
 
 ---
 
-## Step 2: Add cherry-pick (one command, also upgrades older versions)
+## Step 2: Add cherry-pick (also upgrades older versions)
 
 ```bash
 sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/RaviVishwakarma12/rabbitvcs/installer/rabbitvcs-cherry-pick.sh)"
@@ -41,10 +59,10 @@ sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/RaviVishwakarma12/r
 The last line should be:
 
 ```
-Done. Open Show Log, choose a branch in the 'Branch' dropdown, right-click a commit, choose 'Cherry Pick this commit...'.
+Done. Open Show Log, click the branch name at the top left to pick a branch, right-click a commit, choose 'Cherry Pick this commit...'.
 ```
 
-Running it again is safe. It prints `Cherry-pick patch is already installed and up to date.`
+Running it again prints `Cherry-pick patch is already installed and up to date.`
 
 ---
 
@@ -60,11 +78,10 @@ nautilus -q
 
 ```bash
 cat /usr/lib/python3/dist-packages/rabbitvcs/.cherry-pick-patch
-ls /usr/lib/python3/dist-packages/rabbitvcs/ui/cherrypick.py
-grep -c "Cherry Pick selected commits" /usr/lib/python3/dist-packages/rabbitvcs/util/contextmenuitems.py
+ls /usr/lib/python3/dist-packages/rabbitvcs/ui/cherrypick.py /usr/lib/python3/dist-packages/rabbitvcs/ui/refbrowser.py
 ```
 
-Expected: a version code (for example `290d5c13b702`), the file path, and `1`.
+Expected: the version code `18f0ad6d9523` and both file paths.
 
 ---
 
@@ -75,64 +92,58 @@ Expected: a version code (for example `290d5c13b702`), the file path, and `1`.
 ```bash
 rm -rf ~/cp-test && mkdir ~/cp-test && cd ~/cp-test
 git init -q -b main
-echo "line 1" > app.txt && git add . && git commit -qm "initial"
+printf 'line 1\nline 2\nline 3\n' > app.txt && git add . && git commit -qm "initial"
 
-git checkout -qb feature
-echo "new file" > extra.txt && git add . && git commit -qm "add extra.txt"
-echo "more"     > more.txt  && git add . && git commit -qm "add more.txt"
-echo "feature change" > app.txt && git commit -qam "change app.txt (feature)"
+git checkout -qb volza-bugfix-ejs-node
+echo fix1 > fix1.txt && git add . && git commit -qm "Volza 74674: fix live errors"
+echo fix2 > fix2.txt && git add . && git commit -qm "Volza 74674: fix search API"
+printf 'line 1\nline 2 from bugfix\nline 3\n' > app.txt && git commit -qam "Volza 74674: app change"
 
-git checkout -q main
-echo "main change" > app.txt && git commit -qam "change app.txt (main)"
-echo "work in progress" > notes.txt && git add notes.txt && git commit -qm "notes"
-echo "uncommitted edit" >> notes.txt
+git checkout -q main && git checkout -qb ravi/task/new-update
+printf 'line 1\nline 2 from my task\nline 3\n' > app.txt && git commit -qam "my task work"
+echo wip > notes.txt && git add notes.txt && git commit -qm "notes"
+echo uncommitted >> notes.txt
 ```
 
-The last line leaves an uncommitted change, to test the stash prompt.
+The last line leaves an uncommitted change, to test the stash prompt. `app.txt` will conflict.
 
-### 5.2 Open the log window
+### 5.2 Open the log
 
 ```bash
 cd ~/cp-test && rabbitvcs log .
 ```
 
-Keep the terminal open. Any error shows there.
-
 ### 5.3 Test cases
 
 | # | Do this | You should see |
 |---|---|---|
-| 1 | **Branch** dropdown → **feature** | Only 3 commits: `add extra.txt`, `add more.txt`, `change app.txt (feature)` |
-| 2 | Click the first commit, Shift+click the last, right-click | Menu item **Cherry Pick selected commits...** |
-| 3 | Click it | **Cherry Pick** dialog: "Cherry-pick onto branch: **main**", 3 ticked commits, oldest first |
-| 4 | Untick **add more.txt**, tick **Add "cherry picked from"**, click **Start Cherry Pick** | *"The current working tree is not clean. Do you want to stash the changes?"* |
-| 5 | Click **Stash** | `add extra.txt` is picked, then the **Conflict** dialog for `change app.txt (feature)` with `app.txt` listed |
-| 6 | Click **Continue** without resolving | Error: *"These files still contain conflict markers: app.txt"*. Click OK |
-| 7 | Select `app.txt` → **Edit Conflicts** | Meld opens: Mine (left), the file to fix (middle), Theirs (right). Close it without saving |
-| 8 | **Resolve using Theirs** → **Continue** | *"Do you want to stash pop now?"* |
-| 9 | Click **Yes** | *"Cherry-pick finished on 'main': 2 picked, 0 skipped."* and the log refreshes |
+| 1 | Look at the top left and bottom left | Branch name **ravi/task/new-update**, **All Branches** unticked, only 3 commits |
+| 2 | Click the branch name → double-click **volza-bugfix-ejs-node** | That branch's history |
+| 3 | Select the 3 "Volza 74674" commits → right-click | **Cherry Pick selected commits...** |
+| 4 | Click it | **Cherry Pick** window, IDs 3, 2, 1 (1 is applied first) |
+| 5 | Click a commit | **Revision Files** lists its files; **Commit Message** shows its message |
+| 6 | Right-click **fix search API** → **Skip** | Its REBASE column says **Skip** |
+| 7 | Click **Continue** | *"The current working tree is not clean…"* → **Stash** |
+| 8 | (automatic) | **fix live errors** picked; **app change** conflicts: **Conflict Files** tab, button **Commit**, status **Rebasing... (3/3)** |
+| 9 | Click **Commit** | *"One or more files are in a conflicted state."* |
+| 10 | Right-click `app.txt` → **Edit conflicts** | Meld: Mine (left), result (middle), Theirs (right). Merge, save (Ctrl+S), close |
+| 11 | (after Meld closes) | *"Are you sure you want to mark the conflicted file(s) as resolved?"* → **Yes**; status becomes **Modified** |
+| 12 | Click **Commit** | If the message still has `# Conflicts:` lines: warning → **Abort**, delete those lines in **Commit Message**, click **Commit** again |
+| 13 | (automatic) | Button **Done**, status **Done**, **Log** tab shown |
+| 14 | Click **Done** | *"Do you want to stash pop now?"* → **Yes**; window closes and the log refreshes |
 
 ### 5.4 Check the result
 
 ```bash
 cd ~/cp-test
-git log --format='%h %s' -3    # change app.txt (feature), add extra.txt, notes
-git log -1 --format=%B         # message ends with "(cherry picked from commit ...)"
-cat app.txt                    # feature change
-git status --short             # M notes.txt  (your uncommitted edit is back)
-ls more.txt                    # "No such file": it was unticked
+git log --format='%h %an %s' -4   # app change, fix live errors, notes, my task work
+git status --short                # M notes.txt  (your uncommitted edit is back)
+ls fix2.txt                       # "No such file": it was skipped
 ```
 
 ### 5.5 Test Abort
 
-```bash
-cd ~/cp-test
-git reset -q --hard HEAD~2 && git checkout -q -- . && git stash clear
-rabbitvcs log .
-```
-
-Choose **feature**, right-click **change app.txt (feature)** → **Cherry Pick this commit...** → **Start Cherry Pick** → in the Conflict dialog click **Abort**.
-Expected: *"Cherry-pick aborted. 'main' was restored to its original state."* and `git status` is clean.
+Open the log again, pick a commit, and in the Cherry Pick window click **Abort** at any point after **Continue** → **Yes**. The branch goes back to exactly where it was.
 
 ### 5.6 Clean up
 
@@ -146,23 +157,21 @@ rm -rf ~/cp-test
 
 Example: you are on `ravi/task/new-update` and need a fix from `volza-bugfix-ejs-node`.
 
-1. Switch to your branch and fetch:
+1. Get the latest commits:
    ```bash
    git checkout ravi/task/new-update && git fetch origin
    ```
 2. In Files, right-click in the repo folder → **RabbitVCS Git → Show Log**.
-3. **Branch** dropdown → **origin/volza-bugfix-ejs-node**. Only commits that branch has and yours doesn't are listed.
-4. Select the commit(s) → right-click → **Cherry Pick this commit...** (or **selected commits...**).
-5. In the dialog, check it says **onto branch: ravi/task/new-update**, untick anything you don't want → **Start Cherry Pick**.
-6. Handle any prompt (stash, merge parent, conflict) as in the tests above.
+3. Click the branch name at the top left → **Browse References** → under **Remote branches → origin**, double-click **volza-bugfix-ejs-node**.
+4. Select the commit(s) → right-click → **Cherry Pick this commit...** / **Cherry Pick selected commits...**
+5. In the Cherry Pick window, set **Skip** / **Squash** / **Edit** if needed → **Continue**.
+6. Handle any prompts as in the test above, then **Done**.
 7. Push:
    ```bash
    git push origin ravi/task/new-update
    ```
 
-Choose **All branches** in the dropdown to go back to the full log.
-
-> Picked commits drop out of the Branch list automatically. A commit picked with a conflict resolution may still be listed, because its final change differs from the original.
+Right-click the branch name → **HEAD -> "ravi/task/new-update"** to go back to your own branch.
 
 ---
 
@@ -184,7 +193,7 @@ sudo apt purge -y rabbitvcs-nautilus rabbitvcs-core rabbitvcs-cli
 sudo apt autoremove -y
 
 sudo apt update
-sudo apt install -y rabbitvcs-nautilus python3-nautilus
+sudo apt install -y rabbitvcs-nautilus python3-nautilus meld
 sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/RaviVishwakarma12/rabbitvcs/installer/rabbitvcs-cherry-pick.sh)"
 nautilus -q
 ```
@@ -197,10 +206,11 @@ nautilus -q
 |---|---|
 | `curl: command not found` | `sudo apt install -y curl` |
 | No RabbitVCS menu in Files | Run `nautilus -q`, then right-click inside a Git repo folder. If still missing, use `rabbitvcs log .` from the terminal (RabbitVCS 0.19 may not load in Nautilus 46+). |
-| No Branch dropdown or no Cherry Pick item | Run Step 4. If anything is missing, run Step 2 again. |
-| Cherry-pick missing after `apt upgrade` | The update replaced RabbitVCS's files. Run Step 2 again. |
+| No branch name at the top left, or no Cherry Pick item | Run Step 4. If anything is missing, run Step 2 again. |
+| Cherry Pick missing after `apt upgrade` | The update replaced RabbitVCS's files. Run Step 2 again. |
+| Remote branches missing in Browse References | Run `git fetch origin` first. |
+| **Edit conflicts** opens a text editor instead of a 3-way view | Install Meld: `sudo apt install -y meld`. A merge tool set in RabbitVCS Settings is used first if you have one. |
 | RabbitVCS stops opening | Run the Remove command, then send the terminal output of `rabbitvcs log .` |
-| **Edit Conflicts** opens a text editor instead of a 3-way view | Meld isn't installed: `sudo apt install -y meld`. It uses the merge tool from RabbitVCS Settings if you set one. You can also fix the conflict markers in any editor, save, then click **Continue**. |
 
 ---
 
@@ -208,4 +218,4 @@ nautilus -q
 
 - Code: https://github.com/RaviVishwakarma12/rabbitvcs/tree/git-log-cherry-pick
 - Installer: https://github.com/RaviVishwakarma12/rabbitvcs/tree/installer
-- Once merged upstream and released, cherry-pick will come with the normal `apt install` and this script won't be needed.
+- Once merged upstream and released, this comes with the normal `apt install` and the script isn't needed.
