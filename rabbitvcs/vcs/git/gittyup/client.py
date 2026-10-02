@@ -2068,6 +2068,11 @@ class GittyupClient:
 
         if showtype == "all" and os.environ.get('RABBITVCS_REVISION_RANGE') is None:
             cmd.append("--all")
+        # rabbitvcs-cherry-pick: ref selector modes of the log window
+        elif showtype == "local":
+            cmd.append("--branches")
+        elif showtype == "basic":
+            cmd += ["--branches", "--tags", "--remotes"]
 
         if limit:
             cmd.append(f"-{limit}")
@@ -2075,9 +2080,6 @@ class GittyupClient:
             cmd.append(f"--skip={skip}")
         if os.environ.get('RABBITVCS_REVISION_RANGE') is not None:
             cmd.append(os.environ.get('RABBITVCS_REVISION_RANGE'))
-        elif showtype == "cherry":
-            # Commits in <revision> not yet in HEAD, hiding already-picked ones
-            cmd += ["--cherry-pick", "--right-only", f"HEAD...{revision}"]
         elif revision:
             if showtype == "push":
                 cmd.append(f"{revision}..")

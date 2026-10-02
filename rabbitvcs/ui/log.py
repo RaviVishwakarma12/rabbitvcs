@@ -737,47 +737,29 @@ class GitLog(Log):
             flags={"sortable": False},
         )
         self.start_point = 0
-        self.branch_filter = None
-        self.initialize_branch_filter()
+        self.initialize_ref_selector()
         self.initialize_root_url()
         self.load_or_refresh()
 
-    def initialize_branch_filter(self):
+    def initialize_ref_selector(self):
         """
-        Adds a "Branch" dropdown next to the search box. Choosing a branch
-        lists only its commits that are not in the current branch
-        (cherry-pick candidates), like TortoiseGit's log branch selector.
+        TortoiseGit-style ref label (top left) and "All Branches" check box
+        (bottom left). The log starts on the current branch.
 
         """
-        self.branch_filter_refs = [None]
-        combo = Gtk.ComboBoxText()
-        combo.append_text(_("All branches"))
+        from rabbitvcs.ui.refbrowser import RefSelector
 
-        current = ""
-        for branch in self.git.branch_list():
-            name = S(branch.name)
-            if branch.tracking:
-                current = name
-                continue
-            if name.endswith("/HEAD") or " -> " in name:
-                continue
-            self.branch_filter_refs.append(name)
-            label = name[len("remotes/") :] if name.startswith("remotes/") else name
-            combo.append_text(label)
-
-        combo.set_active(0)
-        combo.set_tooltip_text(
-            _("Show commits from this branch that are not in '%s'") % current
+        self.ref_selector = RefSelector(
+            self.path, self.get_widget("Log"), self.on_ref_changed
         )
-        combo.connect("changed", self.on_branch_filter_changed)
+        search = self.get_widget("hbox-search")
+        search.attach(self.ref_selector.button, -1, 0, 1, 1)
+        search.show_all()
+        bottom = self.get_widget("close").get_parent()
+        bottom.attach(self.ref_selector.all_branches, 0, -1, 1, 1)
+        self.ref_selector.all_branches.show()
 
-        grid = self.get_widget("hbox-search")
-        grid.attach(Gtk.Label(label=_("Branch:")), 1, 0, 1, 1)
-        grid.attach(combo, 2, 0, 1, 1)
-        grid.show_all()
-
-    def on_branch_filter_changed(self, combo):
-        self.branch_filter = self.branch_filter_refs[combo.get_active()]
+    def on_ref_changed(self):
         self.start_point = 0
         self.load()
 
@@ -916,19 +898,12 @@ class GitLog(Log):
         # Load log.
         self.action = GitAction(self.git, notification=False, run_in_thread=True)
 
-        log_args = {}
-        if self.branch_filter:
-            log_args = {
-                "revision": self.git.revision(self.branch_filter),
-                "showtype": "cherry",
-            }
-
         self.action.append(
             self.git.log,
             path=self.path,
             skip=self.start_point,
             limit=self.limit + 1,
-            **log_args
+            **self.ref_selector.log_arguments(self.git)
         )
         self.action.append(self.refresh)
         self.action.schedule()
@@ -1243,10 +1218,17 @@ class LogTopContextMenuConditions:
         return self.vcs_name == rabbitvcs.vcs.VCS_GIT
 
     def cherry_pick(self, data=None):
-        return self.vcs_name == rabbitvcs.vcs.VCS_GIT and len(self.revisions) == 1
+        return len(self.revisions) == 1 and self.can_cherry_pick()
 
     def cherry_pick_selected(self, data=None):
-        return self.vcs_name == rabbitvcs.vcs.VCS_GIT and len(self.revisions) > 1
+        return len(self.revisions) > 1 and self.can_cherry_pick()
+
+    def can_cherry_pick(self):
+        if self.vcs_name != rabbitvcs.vcs.VCS_GIT:
+            return False
+        from rabbitvcs.ui.cherrypick import can_cherry_pick
+
+        return can_cherry_pick(self.path, [S(r["revision"]) for r in self.revisions])
 
 
 class LogTopContextMenuCallbacks:
@@ -1494,16 +1476,8 @@ class LogTopContextMenuCallbacks:
     def cherry_pick(self, widget, data=None):
         from rabbitvcs.ui.cherrypick import cherry_pick
 
-        # The log lists newest first; TortoiseGit picks oldest first.
-        commits = [
-            (
-                S(r["revision"]),
-                S(r["message"]).strip().split("\n")[0],
-                S(r["author"]),
-            )
-            for r in reversed(self.revisions)
-        ]
-        if cherry_pick(self.path, commits, self.caller.get_widget("Log")):
+        hashes = [S(r["revision"]) for r in self.revisions]
+        if cherry_pick(self.path, hashes, self.caller.get_widget("Log")):
             self.caller.load()
 
     def cherry_pick_selected(self, widget, data=None):
